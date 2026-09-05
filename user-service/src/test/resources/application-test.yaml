@@ -1,0 +1,19 @@
+spring:
+  cloud:
+    config:
+      enabled: false
+  datasource:
+    url: jdbc:postgresql://localhost:5433/inno-test-users-db
+    username: test
+    password: test
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  cache:
+    type: none
+
+jwt:
+  secret: testSecretKeyForTestingPurposesOnly
+  access-token-expiration: 3600000
+  refresh-token-expiration: 604800000

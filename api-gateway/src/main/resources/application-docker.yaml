@@ -1,0 +1,27 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8080
+
+spring:
+  config:
+    activate:
+      on-profile: docker
+    import: configserver:http://config-server:8888
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_DOCKER_URL}
+              predicates:
+                - Path=${USER_SERVICE_PATH}/**
+            - id: auth-service
+              uri: ${AUTH_SERVICE_DOCKER_URL}
+              predicates:
+                - Path=${AUTH_SERVICE_PATH}/**
+            - id: order-service
+              uri: ${ORDER_SERVICE_DOCKER_URL}
+              predicates:
+                - Path=${ORDER_SERVICE_PATH}/**

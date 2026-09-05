@@ -1,0 +1,25 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  config:
+    activate:
+      on-profile: default
+    import:
+      - configserver:http://localhost:8888
+      - file:.env[.properties]
+  datasource:
+    url: jdbc:postgresql://localhost:5433/inno-users-db
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  cache:
+    redis:
+      time-to-live: 24h

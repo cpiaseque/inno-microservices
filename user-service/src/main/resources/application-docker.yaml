@@ -1,0 +1,18 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8081
+
+spring:
+  config:
+    activate:
+      on-profile: docker
+    import: configserver:http://config-server:8888
+  datasource:
+    url: jdbc:postgresql://user-service-postgres:5432/inno-users-db
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      host: redis
+      port: 6379

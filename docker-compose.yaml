@@ -1,0 +1,308 @@
+name: inno-microservices
+
+services:
+  postgres-1:
+    image: postgres:15-alpine
+    container_name: user-service-postgres
+    environment:
+      POSTGRES_DB: inno-users-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - 5433:5432
+    volumes:
+      - ./volumes/user-postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d inno-users-db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-2:
+    image: postgres:15-alpine
+    container_name: auth-service-postgres
+    environment:
+      POSTGRES_DB: inno-auth-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - 5434:5432
+    volumes:
+      - ./volumes/auth-postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d inno-auth-db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-3:
+    image: postgres:15-alpine
+    container_name: order-service-postgres
+    environment:
+      POSTGRES_DB: inno-orders-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - 5435:5432
+    volumes:
+      - ./volumes/order-postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d inno-orders-db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo-1:
+    image: mongo:latest
+    container_name: mongo-1
+    environment:
+      MONGO_INITDB_DATABASE: inno-payment-db
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_KEY: ${MONGO_KEY}
+    ports:
+      - 27017:27017
+    volumes:
+      - ./volumes/mongo/replica-1/data:/data/db
+    command: >
+      sh -c "
+        if [ ! -f /data/db/mongo.key ]; then
+          echo ${MONGO_KEY} > /data/db/mongo.key &&
+          chmod 400 /data/db/mongo.key;
+        fi &&
+      
+        chmod -R 755 /data/db/.mongodb/mongosh/ || true
+
+        docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/db/mongo.key --auth &
+      
+        echo 'Waiting for mongo-1 to be ready...';
+        until mongosh --host localhost --port 27017 --eval 'db.adminCommand(\"ping\")' > /dev/null 2>&1; do sleep 1; done;
+
+        echo 'Waiting for other nodes to be ready...';
+        until mongosh --host mongo-2 --port 27017 --eval 'db.adminCommand(\"ping\")' > /dev/null 2>&1; do sleep 1; done;
+        until mongosh --host mongo-3 --port 27017 --eval 'db.adminCommand(\"ping\")' > /dev/null 2>&1; do sleep 1; done;
+
+        echo 'Initiating replica set...';
+        mongosh --host localhost -u admin -p admin --authenticationDatabase admin --eval '
+          db.adminCommand({
+            "replSetInitiate": {
+              "_id": "rs0",
+              "members": [
+                { "_id": 0, "host": "mongo-1:27017", "priority": 2 },
+                { "_id": 1, "host": "mongo-2:27017", "priority": 1 },
+                { "_id": 2, "host": "mongo-3:27017", "priority": 1 }
+              ]
+            }
+          })
+        ';
+
+        wait
+      "
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --eval \"db.adminCommand('ping')\" admin -u admin 
+              -p admin --authenticationDatabase admin --quiet" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mongo-2:
+    image: mongo:latest
+    container_name: mongo-2
+    environment:
+      MONGO_INITDB_DATABASE: inno-payment-db
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_KEY: ${MONGO_KEY}
+    ports:
+      - 27018:27017
+    volumes:
+      - ./volumes/mongo/replica-2/data:/data/db
+    command: >
+      sh -c "
+        if [ ! -f /data/db/mongo.key ]; then
+          echo ${MONGO_KEY} > /data/db/mongo.key &&
+          chmod 400 /data/db/mongo.key;
+        fi &&
+      
+        chmod -R 755 /data/db/.mongodb/mongosh/ || true
+      
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/db/mongo.key --auth
+      "
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --eval \"db.adminCommand('ping')\" admin -u admin 
+              -p admin --authenticationDatabase admin --quiet" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mongo-3:
+    image: mongo:latest
+    container_name: mongo-3
+    environment:
+      MONGO_INITDB_DATABASE: inno-payment-db
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_KEY: ${MONGO_KEY}
+    ports:
+      - 27019:27017
+    volumes:
+      - ./volumes/mongo/replica-3/data:/data/db
+    command: >
+      sh -c "
+        if [ ! -f /data/db/mongo.key ]; then
+          echo ${MONGO_KEY} > /data/db/mongo.key &&
+          chmod 400 /data/db/mongo.key;
+        fi &&
+      
+        chmod -R 755 /data/db/.mongodb/mongosh/ || true
+      
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/db/mongo.key --auth
+      "
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --eval \"db.adminCommand('ping')\" admin -u admin 
+              -p admin --authenticationDatabase admin --quiet" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - 6379:6379
+    volumes:
+      - ./volumes/redis/data:/data
+    command: redis-server --appendonly yes
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+    ports:
+      - 9092:9092
+      - 9094:9094
+    volumes:
+      - ./volumes/kafka/data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    ports:
+      - 8888:8888
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8888/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - 8081:8081
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file:
+      - .env
+    depends_on:
+      postgres-1:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - 8082:8082
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file:
+      - .env
+    depends_on:
+      postgres-2:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - 8083:8083
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file:
+      - .env
+    depends_on:
+      postgres-3:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - 8084:8084
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file:
+      - .env
+    depends_on:
+      mongo-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      order-service:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - 8080:8080
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    env_file:
+      - .env
+    depends_on:
+      config-server:
+        condition: service_healthy

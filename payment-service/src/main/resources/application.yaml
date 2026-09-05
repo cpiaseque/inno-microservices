@@ -1,0 +1,28 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+  config:
+    activate:
+      on-profile: default
+    import:
+      - configserver:http://localhost:8888
+      - file:.env[.properties]
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER_LOCAL}
+    consumer:
+      group-id: payments-service-group
+      properties:
+        spring.json.trusted.packages: "com.innowise.orderservice.*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.innowise.paymentservice.model.dto.kafka.OrderCreatedEvent
+  data:
+    mongodb:
+      uri: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@localhost:27017/inno-payment-db?authSource=admin&replicaSet=rs0&directConnection=true
+
+external-api:
+  url: "https://www.randomnumberapi.com/api/v1.0/random?min=1&max=100&count=1"

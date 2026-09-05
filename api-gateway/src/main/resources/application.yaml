@@ -1,0 +1,44 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    activate:
+      on-profile: default
+    import:
+      - configserver:http://localhost:8888
+      - file:.env[.properties]
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_LOCAL_URL}
+              predicates:
+                - Path=${USER_SERVICE_PATH}/**
+              filters:
+                - name: JwtAuthenticationGatewayFilter
+            - id: auth-service
+              uri: ${AUTH_SERVICE_LOCAL_URL}
+              predicates:
+                - Path=${AUTH_SERVICE_PATH}/**
+              filters:
+                - name: JwtAuthenticationGatewayFilter
+            - id: order-service
+              uri: ${ORDER_SERVICE_LOCAL_URL}
+              predicates:
+                - Path=${ORDER_SERVICE_PATH}/**
+              filters:
+                - name: JwtAuthenticationGatewayFilter
+
+gateway:
+  security:
+    public-paths:
+      - ${AUTH_SERVICE_PATH}/register
+      - ${AUTH_SERVICE_PATH}/login
+      - ${ACTUATOR_PATH}

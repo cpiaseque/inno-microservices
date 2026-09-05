@@ -1,0 +1,24 @@
+server:
+  servlet:
+    context-path: ${SERVICES_COMMON_PATH}
+  port: 8082
+
+spring:
+  application:
+    name: auth-service
+  config:
+    activate:
+      on-profile: default
+    import:
+      - configserver:http://localhost:8888
+      - file:.env[.properties]
+  datasource:
+    url: jdbc:postgresql://localhost:5434/inno-auth-db
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  cloud:
+    openfeign:
+      client:
+        config:
+          user-service:
+            url: ${USER_SERVICE_LOCAL_URL}${SERVICES_COMMON_PATH}
